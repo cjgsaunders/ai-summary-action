@@ -1,47 +1,36 @@
-# 🤖 Ollama Scribe Local — Private locally hosted AI PR Summaries
+# 🤖 Ollama Scribe Local — AI Pull Request Summaries & Reviews
 
-[![Marketplace](https://img.shields.io/badge/Marketplace-Ollama%20Scribe-blue.svg?colorA=24292e&colorB=0366d6&style=flat&longCache=true&logo=github)](https://github.com/marketplace/actions/ollama-scribe)
+[![Marketplace](https://github.com/marketplace/actions/ollama-scribe-local-pr-summary)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Category](https://img.shields.io/badge/Category-Utilities-orange)
 
-**Ollama Scribe** is a high-performance GitHub Action that uses locally-hosted LLMs to automatically summarize Pull Request diffs. Keep your source code private and eliminate OpenAI/Anthropic API costs.
-
----
-
-
-
-## 💡 Why Ollama Scribe Local?
-
-Existing AI PR tools often send your sensitive code to 3rd-party servers or require expensive monthly subscriptions. **Ollama Scribe** bridges the gap between DevOps and Local AI:
-
-* **🛡️ Privacy First:** Your code never leaves your infrastructure. Ideal for proprietary or sensitive projects.
-* **💰 Zero Cost:** Leverage your own hardware (GPUs/iGPUs) with Ollama. No per-token fees.
-* **🧠 Logic-Aware:** Optimized for code-centric models like `Qwen2.5-Coder` and `DeepSeek-R1`.
-* **⚡ Optimized Performance:** Handles large diffs gracefully with intelligent truncation and `jq`-powered JSON sanitization.
-
----
+**Ollama Scribe Local** is a high-performance GitHub Action that uses locally hosted LLMs to perform two distinct jobs:
+**1.** Automatically generate PR summaries so you can spend more time writing code not PRs
+**2** Conduct in-depth reviews of Pull Request diffs. 
+Keep your source code private and eliminate OpenAI/Anthropic API costs.
 
 
 
 ## ⚙️ Configuration
 
-| Name | Description | Required | Default |
-| :--- | :--- | :--- | :--- |
-| `github-token` | The `GITHUB_TOKEN` to post comments. | `true` | N/A |
-| `ollama-url` | The URL of your Ollama server endpoint. | `true` | `http://localhost:11434` |
-| `model-name` | The Ollama model to use for analysis. | `false` | `qwen2.5-coder:7b` |
-| `max-diff-length` | Max characters to process (prevents context overflow). | `false` | `1500000` |
-| `prompt-instructions`| The instructions for the model that prefix the diff. | `false` | `Summarize the following code changes for a PR description. Use bullet points:` |
+| Name | Description                                                                                 | Required | Default |
+| :--- |:--------------------------------------------------------------------------------------------| :--- | :--- |
+| `github-token` | The `GITHUB_TOKEN` to post comments.                                                        | `true` | N/A |
+| `ollama-url` | The URL of your Ollama server endpoint.                                                     | `true` | N/A |
+| `model-name` | The Ollama model to use for analysis.                                                       | `false` | `qwen2.5-coder:14b` |
+| `mode` | Operation mode: `summary` (default) or `review`.                                            | `false` | `summary` |
+| `max-diff-length` | Max characters to process (prevents context overflow).                                      | `false` | `1500000` |
+| `prompt-instructions`| Custom instructions to override the default prompt for the selected mode set in the script. | `false` | `''` |
 
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-* A **Self-Hosted Runner** with network access to your Ollama instance.
-* The following tools installed on the runner: `curl`, `jq`, and the `gh` (GitHub CLI).
+*   A **Self-Hosted Runner** with network access to your Ollama instance.
+*   The following tools installed on the runner: `curl`, `jq`, and the `gh` (GitHub CLI).
 
-### 2. Workflow Example
+### 2. Workflow Example (PR Summary)
 Create `.github/workflows/pr-summary.yml`:
 
 ```yaml
@@ -55,7 +44,7 @@ jobs:
   summarize:
     # IMPORTANT: Use 'self-hosted' if Ollama is running on your local network/machine.
     # Can use ubuntu-latest if your Ollama instance is hosted online somewhere.
-    runs-on: self-hosted 
+    runs-on: self-hosted
     permissions:
       pull-requests: write
       contents: read
@@ -65,8 +54,40 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Ollama Scribe - PR Summary
-        uses: cjgsaunders/ollama-scribe-local@v1
+        uses: cjgsaunders/ollama-scribe-local@2.0.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ollama-url: "http://localhost:11434" # Use a secret if your instance is public
           model-name: "qwen2.5-coder:14b"
+          mode: 'summary' # This is the default
+```
+
+### 3. Workflow Example (PR Review)
+Create `.github/workflows/pr-review.yml`:
+
+```yaml
+name: AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: self-hosted
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Ollama Scribe - PR Review
+        uses: cjgsaunders/ollama-scribe-local@2.0.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ollama-url: "http://localhost:11434"
+          model-name: "qwen2.5-coder:14b"
+          mode: 'review'
+```

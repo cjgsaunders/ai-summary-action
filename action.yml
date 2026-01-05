@@ -1,4 +1,4 @@
-name: 'Ollama Scribe Local - PR Summary'
+name: 'Ollama Scribe Local - PR Summary and Review'
 description: 'Summarize GitHub Pull Requests using a local Ollama instance. Requires gh, jq, and curl.'
 author: 'Chris Saunders'
 branding:
@@ -16,14 +16,18 @@ inputs:
         description: 'Ollama model to use'
         required: false
         default: 'qwen2.5-coder:14b'
+    mode:
+        description: 'The operation mode: "summary" (default) or "review"'
+        required: false
+        default: 'summary'
     max-diff-length:
         description: 'The maximum number of characters for the diff to be sent for summarization.'
         required: false
         default: '1500000'
     prompt-instructions:
-        description: 'The instructions for the model that will prefix the PR diff.'
+        description: 'The instructions for the model that will prefix the PR diff. Default set in the script.'
         required: false
-        default: 'Summarize the following code changes for a PR description. Use bullet points:'
+        default: ''
 
 outputs:
     summary:
@@ -40,64 +44,71 @@ runs:
               GH_TOKEN: ${{ inputs.github-token }}
           run: |
               set -eo pipefail
-
-              # 1. Get the diff of the Pull Request
+              
+              # 1. Determine the personality based on mode
+              if [ "${{ inputs.mode }}" == "review" ]; then
+                DEFAULT_PROMPT="Acting as a Senior Engineer, provide a technical review of these changes. Group feedback by file. Focus on logic, potential bugs, and performance. Use Markdown tables or headers for clarity."
+                HEADER="🔍 AI Technical Review"
+              else
+                DEFAULT_PROMPT="Summarize the following code changes for a PR description. Use bullet points:"
+                HEADER="🤖 AI Summary"
+              fi
+              
+              # Use custom instructions if provided, otherwise use the mode-based default
+              FINAL_INSTRUCTIONS="${{ inputs.prompt-instructions }}"
+              if [ -z "$FINAL_INSTRUCTIONS" ]; then
+                FINAL_INSTRUCTIONS="$DEFAULT_PROMPT"
+              fi
+              
+              # 2. Get the diff of the Pull Request
               DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
               if [ -z "$DIFF" ]; then
                 echo "No diff found. Exiting."
                 exit 0
               fi
-
-              # 2. Truncate diff if it exceeds the max length (line-based to avoid splitting UTF-8)
+              
+              # 3. Truncate diff if it exceeds the max length
               if [ ${#DIFF} -gt ${{ inputs.max-diff-length }} ]; then
-                echo "Diff is too long. Truncating to approximately ${{ inputs.max-diff-length }} characters."
+                echo "Diff is too long. Truncating."
                 DIFF=$(echo "$DIFF" | head -c ${{ inputs.max-diff-length }})
               fi
-
-              # Check if diff is still non-empty after truncation
-              if [ -z "$DIFF" ]; then
-                echo "::warning::Diff became empty after truncation. Exiting."
-                exit 0
-              fi
-
-              # 3. Create a JSON payload safely using jq, combining instructions and the diff
+              
+              # 4. Create a JSON payload (Uses FINAL_INSTRUCTIONS)
               JSON_PAYLOAD=$(jq -n \
                                 --arg model "${{ inputs.model-name }}" \
-                                --arg instructions "${{ inputs.prompt-instructions }}" \
+                                --arg instructions "$FINAL_INSTRUCTIONS" \
                                 --arg diff "$DIFF" \
                                 '{model: $model, prompt: ($instructions + "\n\n" + $diff), stream: false}')
-
-              # 4. Call your local Ollama API with timeout and error handling
-              RESPONSE=$(curl -s -f --max-time 120 \
+              
+              # 5. Call your local Ollama API
+              RESPONSE=$(curl -s -f --max-time 180 \
                               -H "Content-Type: application/json" \
                               -X POST "${{ inputs.ollama-url }}/api/generate" \
                               -d "$JSON_PAYLOAD") || {
-                echo "::error::Failed to connect to Ollama API at ${{ inputs.ollama-url }}"
+                echo "::error::Failed to connect to Ollama API"
                 exit 1
               }
-
-              # 5. Extract summary and validate
+              
+              # 6. Extract summary
               SUMMARY=$(echo "$RESPONSE" | jq -r '.response')
               if [[ -z "$SUMMARY" || "$SUMMARY" == "null" ]]; then
-                echo "::error::Failed to get a summary from the Ollama API."
-                echo "Response: $RESPONSE"
+                echo "::error::Failed to get response from Ollama."
                 exit 1
               fi
-
-              # 6. Set output
+              
+              # 7. Set output
               echo "summary<<EOF" >> "$GITHUB_OUTPUT"
               echo "$SUMMARY" >> "$GITHUB_OUTPUT"
               echo "EOF" >> "$GITHUB_OUTPUT"
-
-              # 7. Truncate summary if needed (GitHub comment limit is ~65k characters)
+              
+              # 8. Truncate summary for GH limits
               MAX_COMMENT_LENGTH=60000
               if [ ${#SUMMARY} -gt $MAX_COMMENT_LENGTH ]; then
-                echo "::warning::Summary is too long for GitHub comment. Truncating."
                 SUMMARY="${SUMMARY:0:$MAX_COMMENT_LENGTH}... [truncated]"
               fi
-
-              # 8. Post comment with error handling
-              gh pr comment ${{ github.event.pull_request.number }} --body "### 🤖 AI Summary (via ${{ inputs.model-name }})
+              
+              # 9. Post comment (Uses dynamic HEADER)
+              gh pr comment ${{ github.event.pull_request.number }} --body "### $HEADER (via ${{ inputs.model-name }})
               $SUMMARY" || {
                 echo "::error::Failed to post comment to PR"
                 exit 1
