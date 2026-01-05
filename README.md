@@ -53,7 +53,8 @@ on:
 
 jobs:
   summarize:
-    # IMPORTANT: Use 'self-hosted' if Ollama is running on your local network/machine
+    # IMPORTANT: Use 'self-hosted' if Ollama is running on your local network/machine.
+    # Can use ubuntu-latest if your Ollama instance is hosted online somewhere.
     runs-on: self-hosted 
     permissions:
       pull-requests: write
@@ -64,7 +65,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Ollama Scribe - PR Summary
-        uses: cjgsaunders/ollama-scribe@v1
+        uses: cjgsaunders/ollama-scribe-local@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ollama-url: "http://localhost:11434" # Use a secret if your instance is public
