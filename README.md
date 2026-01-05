@@ -1,6 +1,6 @@
 # 🤖 Ollama Scribe Local — AI Pull Request Summaries & Reviews
 
-[![Marketplace](https://github.com/marketplace/actions/ollama-scribe-local-pr-summary)
+[![Marketplace](https://img.shields.io/github/v/release/cjgsaunders/ollama-scribe-local?label=Marketplace)](https://github.com/marketplace/actions/ollama-scribe-local)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Category](https://img.shields.io/badge/Category-Utilities-orange)
 
